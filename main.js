@@ -18,7 +18,6 @@ let cursors;
 let stepTimer = 0;
 let audioCtx = null;
 let controlEnabled = false;
-let audioStarted = false;
 
 function create() {
   const scene = this;
@@ -37,7 +36,7 @@ function create() {
     );
   }
 
-  // === PLAYER PIXEL ART ===
+  // === PLAYER ===
   const g = scene.make.graphics({ x: 0, y: 0, add: false });
   g.fillStyle(0xffffff);
   g.fillRect(2, 0, 4, 4);
@@ -48,7 +47,7 @@ function create() {
   player = scene.physics.add.sprite(160, 140, "player");
   player.setCollideWorldBounds(true);
 
-  // === CÂMERA ===
+  // === CAMERA ===
   scene.cameras.main.startFollow(player);
   scene.cameras.main.setDeadzone(40, 40);
 
@@ -56,7 +55,7 @@ function create() {
   cursors = scene.input.keyboard.createCursorKeys();
   scene.keys = scene.input.keyboard.addKeys("W,A,S,D");
 
-  // === OVERLAY PRETO ===
+  // === OVERLAY ===
   const fade = scene.add.rectangle(160, 90, 320, 180, 0x000000).setDepth(10);
 
   const title = scene.add.text(160, 80, "CIDADE DE NÉVOA", {
@@ -70,10 +69,15 @@ function create() {
     { fontSize: "8px", color: "#777", fontFamily: "monospace" }
   ).setOrigin(0.5).setDepth(11);
 
-  // === CLIQUE INICIAL ===
-  scene.input.once("pointerdown", () => {
-    // iniciar áudio com interação
+  // === CLICK INICIAL ===
+  scene.input.once("pointerdown", async () => {
     audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+    // 🔥 ESSENCIAL
+    if (audioCtx.state === "suspended") {
+      await audioCtx.resume();
+    }
+
     ambientSound();
 
     info.destroy();
@@ -134,7 +138,6 @@ function update(time) {
   }
 }
 
-// === SOM DE PASSO ===
 function playStep() {
   if (!audioCtx) return;
 
@@ -149,7 +152,6 @@ function playStep() {
   osc.stop(audioCtx.currentTime + 0.05);
 }
 
-// === MUSICA AMBIENTE ===
 function ambientSound() {
   const osc = audioCtx.createOscillator();
   const gain = audioCtx.createGain();
