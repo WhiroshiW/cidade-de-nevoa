@@ -18,16 +18,17 @@ let cursors;
 let stepTimer = 0;
 let audioCtx = null;
 let controlEnabled = false;
+let fogLayers = [];
 
 function create() {
   const scene = this;
 
-  // === FUNDO ===
+  // ===== FUNDO =====
   const bg = scene.add.graphics();
-  bg.fillStyle(0x0b0b0b);
+  bg.fillStyle(0x0a0a0a);
   bg.fillRect(0, 0, 320, 180);
-  for (let i = 0; i < 80; i++) {
-    bg.fillStyle(0x1a1a1a);
+  for (let i = 0; i < 120; i++) {
+    bg.fillStyle(0x161616);
     bg.fillRect(
       Phaser.Math.Between(0, 320),
       Phaser.Math.Between(0, 180),
@@ -36,7 +37,7 @@ function create() {
     );
   }
 
-  // === PLAYER ===
+  // ===== PLAYER PIXEL ART =====
   const g = scene.make.graphics({ x: 0, y: 0, add: false });
   g.fillStyle(0xffffff);
   g.fillRect(2, 0, 4, 4);
@@ -47,58 +48,74 @@ function create() {
   player = scene.physics.add.sprite(160, 140, "player");
   player.setCollideWorldBounds(true);
 
-  // === CAMERA ===
+  // ===== CAMERA =====
   scene.cameras.main.startFollow(player);
   scene.cameras.main.setDeadzone(40, 40);
 
-  // === CONTROLES ===
+  // ===== CONTROLES =====
   cursors = scene.input.keyboard.createCursorKeys();
   scene.keys = scene.input.keyboard.addKeys("W,A,S,D");
 
-  // === OVERLAY ===
+  // ===== NÉVOA =====
+  for (let i = 0; i < 3; i++) {
+    const fog = scene.add.rectangle(
+      160,
+      90,
+      340,
+      200,
+      0xffffff,
+      0.03
+    ).setDepth(5);
+
+    fog.speed = 0.05 + Math.random() * 0.05;
+    fog.offset = Math.random() * 100;
+    fogLayers.push(fog);
+  }
+
+  // ===== OVERLAY =====
   const fade = scene.add.rectangle(160, 90, 320, 180, 0x000000).setDepth(10);
 
   const title = scene.add.text(160, 80, "CIDADE DE NÉVOA", {
     fontSize: "12px",
-    color: "#999",
+    color: "#888",
     fontFamily: "monospace"
   }).setOrigin(0.5).setDepth(11);
 
-  const info = scene.add.text(160, 110,
+  const info = scene.add.text(
+    160,
+    110,
     "Clique para começar",
-    { fontSize: "8px", color: "#777", fontFamily: "monospace" }
+    { fontSize: "8px", color: "#666", fontFamily: "monospace" }
   ).setOrigin(0.5).setDepth(11);
 
-  // === CLICK INICIAL ===
+  // ===== CLIQUE INICIAL =====
   scene.input.once("pointerdown", async () => {
     audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === "suspended") await audioCtx.resume();
 
-    // 🔥 ESSENCIAL
-    if (audioCtx.state === "suspended") {
-      await audioCtx.resume();
-    }
-
-    ambientSound();
+    startPsychologicalMusic();
 
     info.destroy();
 
     scene.tweens.add({
       targets: fade,
       alpha: 0,
-      duration: 2000,
+      duration: 2500,
       onComplete: () => {
         title.destroy();
 
         scene.tweens.add({
           targets: player,
           y: 90,
-          duration: 3000,
+          duration: 3500,
           onComplete: () => {
             controlEnabled = true;
 
-            const hint = scene.add.text(160, 10,
+            const hint = scene.add.text(
+              160,
+              10,
               "WASD ou Setas para mover",
-              { fontSize: "7px", color: "#666" }
+              { fontSize: "7px", color: "#555" }
             ).setOrigin(0.5);
 
             scene.time.delayedCall(3000, () => hint.destroy());
@@ -110,6 +127,16 @@ function create() {
 }
 
 function update(time) {
+  // ===== NÉVOA VIVA =====
+  fogLayers.forEach((fog, i) => {
+    fog.x = 160 + Math.sin(time * 0.0003 + fog.offset) * 10;
+    fog.y = 90 + Math.cos(time * 0.0002 + fog.offset) * 6;
+  });
+
+  // ===== CAMERA INSTÁVEL (PSICOLÓGICO) =====
+  this.cameras.main.scrollX += Math.sin(time * 0.0005) * 0.05;
+  this.cameras.main.scrollY += Math.cos(time * 0.0004) * 0.05;
+
   if (!controlEnabled) return;
 
   const speed = 60;
@@ -134,35 +161,61 @@ function update(time) {
 
   if (moving && time > stepTimer) {
     playStep();
-    stepTimer = time + 300;
+    stepTimer = time + 320;
   }
 }
 
+// ===== PASSOS =====
 function playStep() {
   if (!audioCtx) return;
 
   const osc = audioCtx.createOscillator();
   const gain = audioCtx.createGain();
+
   osc.type = "square";
-  osc.frequency.value = 180;
-  gain.gain.value = 0.05;
+  osc.frequency.value = 160 + Math.random() * 20;
+  gain.gain.value = 0.04;
+
   osc.connect(gain);
   gain.connect(audioCtx.destination);
+
   osc.start();
-  osc.stop(audioCtx.currentTime + 0.05);
+  osc.stop(audioCtx.currentTime + 0.04);
 }
 
-function ambientSound() {
-  const osc = audioCtx.createOscillator();
-  const gain = audioCtx.createGain();
-  osc.type = "sine";
-  osc.frequency.value = 55;
-  gain.gain.value = 0.02;
-  osc.connect(gain);
-  gain.connect(audioCtx.destination);
-  osc.start();
+// ===== MÚSICA PSICOLÓGICA =====
+function startPsychologicalMusic() {
+  const master = audioCtx.createGain();
+  master.gain.value = 0.05;
+  master.connect(audioCtx.destination);
 
-  setInterval(() => {
-    osc.frequency.value = 45 + Math.random() * 20;
-  }, 3000);
+  function drone(freq, duration) {
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+
+    osc.type = "triangle";
+    osc.frequency.value = freq + (Math.random() * 3 - 1.5);
+
+    gain.gain.setValueAtTime(0, audioCtx.currentTime);
+    gain.gain.linearRampToValueAtTime(0.04, audioCtx.currentTime + 2);
+    gain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + duration);
+
+    osc.connect(gain);
+    gain.connect(master);
+
+    osc.start();
+    osc.stop(audioCtx.currentTime + duration);
+  }
+
+  function loop() {
+    const t = audioCtx.currentTime;
+
+    drone(45, 8);
+    setTimeout(() => drone(62, 7), 4000);
+    setTimeout(() => drone(52, 9), 9000);
+
+    setTimeout(loop, 12000);
+  }
+
+  loop();
 }
