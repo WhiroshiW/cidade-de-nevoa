@@ -18,15 +18,17 @@ const config = {
 
 new Phaser.Game(config);
 
-let sceneState = "menu"; // menu | options | game
-let player;
-let cursors;
-let audioCtx;
+// ================= ESTADO =================
+let state = "menu"; // menu | options | game
+let player, loopPlayer;
+let cursors, keys;
+let audioCtx, ambientGain;
 let masterVolume = 0.4;
-let ambientGain;
+
+// grupos de objetos
 let menuObjects = [];
-let optionsObjects = [];
-let loopPlayer;
+let optionObjects = [];
+let gameObjects = [];
 
 // ================= PRELOAD =================
 function preload() {
@@ -36,30 +38,35 @@ function preload() {
 // ================= CREATE =================
 function create() {
   cursors = this.input.keyboard.createCursorKeys();
-  this.keys = this.input.keyboard.addKeys("W,A,S,D");
+  keys = this.input.keyboard.addKeys("W,A,S,D");
 
   createMenu(this);
+
+  // iniciar áudio após gesto
+  this.input.once("pointerdown", () => {
+    if (!audioCtx) startAmbient();
+  });
 }
 
 // ================= UPDATE =================
 function update() {
-  if (sceneState === "menu") {
-    loopPlayer.x += 0.3;
-    if (loopPlayer.x > 340) loopPlayer.x = -20;
+  if (state === "menu") {
+    loopPlayer.x += 0.25;
+    if (loopPlayer.x > 350) loopPlayer.x = -30;
   }
 
-  if (sceneState === "game") {
-    updateGame(this);
+  if (state === "game") {
+    updateGame();
   }
 }
 
 // ================= MENU =================
 function createMenu(scene) {
-  sceneState = "menu";
-  menuObjects.forEach(o => o.destroy());
-  menuObjects = [];
+  clearAll();
 
-  // fundo floresta
+  state = "menu";
+
+  // floresta
   for (let i = 0; i < 14; i++) {
     menuObjects.push(
       scene.add.rectangle(
@@ -68,14 +75,33 @@ function createMenu(scene) {
         12,
         20,
         0x0a2a14
-      )
+      ).setDepth(-5)
     );
   }
 
-  scene.add.rectangle(160, 125, 320, 40, 0x1a1a1a);
+  // caminho
+  menuObjects.push(
+    scene.add.rectangle(160, 130, 320, 40, 0x1a1a1a).setDepth(-4)
+  );
 
-  // personagem em loop
-  loopPlayer = scene.add.sprite(-20, 125, "player");
+  // névoa psicológica (CORRIGIDA)
+  const fog = scene.add.rectangle(160, 90, 360, 220, 0x999999)
+    .setAlpha(0.12)
+    .setDepth(-3);
+
+  scene.tweens.add({
+    targets: fog,
+    alpha: { from: 0.08, to: 0.18 },
+    duration: 6000,
+    yoyo: true,
+    repeat: -1
+  });
+
+  menuObjects.push(fog);
+
+  // personagem andando em loop
+  loopPlayer = scene.add.sprite(-30, 130, "player").setDepth(-2);
+  menuObjects.push(loopPlayer);
 
   // título
   menuObjects.push(
@@ -88,17 +114,13 @@ function createMenu(scene) {
 
   // botões
   createButton(scene, 160, 70, "INICIAR", () => startGame(scene));
-  createButton(scene, 160, 95, "CARREGAR", () => alert("Save system em breve"));
+  createButton(scene, 160, 95, "CARREGAR", () => alert("Sistema de save em breve"));
   createButton(scene, 160, 120, "OPÇÕES", () => createOptions(scene));
-
-  if (!audioCtx) {
-    scene.input.once("pointerdown", () => startAmbient());
-  }
 }
 
 // ================= BOTÃO =================
-function createButton(scene, x, y, text, action) {
-  const btn = scene.add.text(x, y, text, {
+function createButton(scene, x, y, label, action) {
+  const btn = scene.add.text(x, y, label, {
     fontFamily: "monospace",
     fontSize: "12px",
     color: "#aaaaaa",
@@ -115,14 +137,10 @@ function createButton(scene, x, y, text, action) {
 
 // ================= OPÇÕES =================
 function createOptions(scene) {
-  sceneState = "options";
-  menuObjects.forEach(o => o.destroy());
-  menuObjects = [];
+  clearAll();
+  state = "options";
 
-  optionsObjects.forEach(o => o.destroy());
-  optionsObjects = [];
-
-  optionsObjects.push(
+  optionObjects.push(
     scene.add.text(160, 20, "OPÇÕES", {
       fontFamily: "monospace",
       fontSize: "14px",
@@ -130,9 +148,9 @@ function createOptions(scene) {
     }).setOrigin(0.5)
   );
 
-  optionsObjects.push(
+  optionObjects.push(
     scene.add.text(20, 50,
-`MOVIMENTO: WASD ou SETAS
+`MOVIMENTO: WASD / SETAS
 INTERAGIR: CLIQUE
 INVENTÁRIO: EM BREVE
 
@@ -143,42 +161,51 @@ VOLUME`, {
     })
   );
 
-  // volume
-  createButton(scene, 80, 120, "-", () => setVolume(-0.1));
-  createButton(scene, 160, 120, "VOLUME", () => {});
-  createButton(scene, 240, 120, "+", () => setVolume(0.1));
+  createOptionButton(scene, 90, 120, "-", () => setVolume(-0.1));
+  createOptionButton(scene, 160, 120, "VOLUME", () => {});
+  createOptionButton(scene, 230, 120, "+", () => setVolume(0.1));
 
-  createButton(scene, 160, 150, "VOLTAR", () => createMenu(scene));
+  createOptionButton(scene, 160, 150, "VOLTAR", () => createMenu(scene));
 }
 
-// ================= VOLUME =================
-function setVolume(amount) {
-  masterVolume = Phaser.Math.Clamp(masterVolume + amount, 0, 1);
-  if (ambientGain) ambientGain.gain.value = masterVolume * 0.05;
+function createOptionButton(scene, x, y, label, action) {
+  const btn = scene.add.text(x, y, label, {
+    fontFamily: "monospace",
+    fontSize: "12px",
+    color: "#aaaaaa",
+    backgroundColor: "#000000",
+    padding: { x: 5, y: 2 }
+  }).setOrigin(0.5).setInteractive();
+
+  btn.on("pointerover", () => btn.setColor("#ffffff"));
+  btn.on("pointerout", () => btn.setColor("#aaaaaa"));
+  btn.on("pointerdown", action);
+
+  optionObjects.push(btn);
 }
 
 // ================= JOGO =================
 function startGame(scene) {
-  sceneState = "game";
-  menuObjects.forEach(o => o.destroy());
-  optionsObjects.forEach(o => o.destroy());
+  clearAll();
+  state = "game";
 
-  // cenário
-  scene.add.rectangle(160, 90, 320, 180, 0x050505);
+  gameObjects.push(
+    scene.add.rectangle(160, 90, 320, 180, 0x050505)
+  );
 
-  player = scene.physics.add.sprite(40, 125, "player");
+  player = scene.physics.add.sprite(40, 130, "player");
   player.setCollideWorldBounds(true);
+  gameObjects.push(player);
 }
 
-// ================= UPDATE GAME =================
-function updateGame(scene) {
+function updateGame() {
   player.setVelocity(0);
   const speed = 60;
 
-  if (cursors.left.isDown || scene.keys.A.isDown) player.setVelocityX(-speed);
-  if (cursors.right.isDown || scene.keys.D.isDown) player.setVelocityX(speed);
-  if (cursors.up.isDown || scene.keys.W.isDown) player.setVelocityY(-speed);
-  if (cursors.down.isDown || scene.keys.S.isDown) player.setVelocityY(speed);
+  if (cursors.left.isDown || keys.A.isDown) player.setVelocityX(-speed);
+  if (cursors.right.isDown || keys.D.isDown) player.setVelocityX(speed);
+  if (cursors.up.isDown || keys.W.isDown) player.setVelocityY(-speed);
+  if (cursors.down.isDown || keys.S.isDown) player.setVelocityY(speed);
 }
 
 // ================= ÁUDIO =================
@@ -191,7 +218,7 @@ function startAmbient() {
   function loop() {
     const osc = audioCtx.createOscillator();
     osc.type = "triangle";
-    osc.frequency.value = 50 + Math.random() * 6;
+    osc.frequency.value = 48 + Math.random() * 6;
     osc.connect(ambientGain);
     osc.start();
     osc.stop(audioCtx.currentTime + 6);
@@ -199,4 +226,20 @@ function startAmbient() {
   }
 
   loop();
+}
+
+function setVolume(amount) {
+  masterVolume = Phaser.Math.Clamp(masterVolume + amount, 0, 1);
+  if (ambientGain) ambientGain.gain.value = masterVolume * 0.05;
+}
+
+// ================= UTIL =================
+function clearAll() {
+  menuObjects.forEach(o => o.destroy());
+  optionObjects.forEach(o => o.destroy());
+  gameObjects.forEach(o => o.destroy());
+
+  menuObjects = [];
+  optionObjects = [];
+  gameObjects = [];
 }
